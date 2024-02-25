@@ -1,0 +1,59 @@
+{% set firstcolsep = "-5mm" %}
+% \documentclass[tikz]{standalone}
+\documentclass[landscape,a4paper,12pt]{article}
+\usepackage[top=0mm, bottom=0mm, outer=0mm, inner=0mm]{geometry}
+
+% \usepackage[utf8]{inputenc}
+
+\usepackage[italian]{babel}
+
+\usepackage{adjustbox}
+
+% \usepackage[sfdefault]{roboto}  %% Option 'sfdefault' only if the base font of the document is to be sans serif
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\usepackage{contour}
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage{tikz}
+\usetikzlibrary{calc,matrix,fit,backgrounds}
+
+% https://tex.stackexchange.com/a/583319/260531
+{% if bg %}
+\AddToHook{shipout/background}{ %
+    \put (0in,-\paperheight){\includegraphics[width=\paperwidth,height=\paperheight]{bg}} %
+}
+{% endif %}
+
+\begin{document}\centering
+
+\begin{tikzpicture}
+    \matrix[
+        matrix of nodes, nodes in empty cells, 
+        row 1/.style={nodes={text width=3cm, text centered, text=white, font=\large\bfseries}},
+        column 1/.style={anchor=center, nodes={text=white, font=\large\bfseries}},
+        row 1 column 1/.style={nodes={text width=0cm, inner sep=0cm}},
+        column sep={{colsep}}, row sep={{rowsep}}] 
+    (timetable) {
+        &[{{firstcolsep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-10mm]
+        {% for time in times %} \contour{black}{ {{-time-}} } &[{{firstcolsep}}]        &         &           &         &         \\ 
+        {% endfor -%} };
+    {% for cell in cells %}
+    {% set key = "cell" ~ loop.index %}
+    \definecolor{cellcolor}{HTML}{ {{-cell.color-}} };
+    \coordinate ({{key}} start) at (timetable-{{cell.start}}-{{cell.day}}.south |- timetable-{{cell.start}}-1.south);
+    \coordinate ({{key}} end) at (timetable-{{cell.end}}-{{cell.day}}.south |- timetable-{{cell.end}}-1.south);
+    \node[rounded corners=2mm, fill=cellcolor, minimum width={{cell.total_width}},inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
+    \node[anchor=center,color=white] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering {{cell.name}}}};
+    \node[above,color=white,font=\tiny] at ({{key}}.south) {\parbox{ {{-cell.text_width-}} }{\centering {{cell.room}}}};
+    {% endfor %}
+    % expand bounding box to the right for more padding
+    \path (current bounding box.east) -- ++(0.25cm, 0);
+    % \path (current bounding box.south) -- ++(0, -0.25cm);
+    \begin{scope}[on background layer]
+        \foreach \y in {2,..., {{-1 + times|length-}} }
+        \draw[help lines] (timetable-\y-1.south west -| current bounding box.west) -- (timetable-\y-1.south west -| current bounding box.east);
+    \end{scope}
+\end{tikzpicture}
+
+\end{document}

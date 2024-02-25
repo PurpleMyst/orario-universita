@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Scegli i corsi{% endblock %}
+{% block content %}
+
+{% macro del_row() %}<a href="#" class="col-auto link-underline-opacity-0 icon-link ns-del-row" >❌</a>{% endmacro %}
+
+{% macro accordion_item(id, name, key, rows) %}
+<div class="accordion-item">
+    <h2 class="accordion-header"><button type="button" class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#{{id}}">{{name}}</button></h2>
+  <div id="{{id}}" class="accordion-collapse collapse" data-bs-parent="#allSubjects">
+    <div class="accordion-body" data-ns-key="{{key}}">
+        <div class="container justify-content-around align-items-center">
+          <input type="hidden" name="{{key}}[name]" value="{{name}}">
+
+          <div class="input-group mb-3">
+            <span class="input-group-text">Colore</span>
+            <input class="form-control form-control-color" autocomplete="off" type="color" name="{{key}}[color]" value="{{random_hex_color()}}">
+          </div>
+
+        <div class="row">
+          <span class="text-center col"><strong>Edificio</strong></span>
+          <span class="text-center col"><strong>Aula</strong></span>
+          <span class="text-center col"><strong>Giorno</strong></span>
+          <span class="text-center col"><strong>Inizio</strong></span>
+          <span class="text-center col"><strong>Fine</strong></span>
+          <span class="col-auto invisible">❌</span>
+        </div>
+
+        {% for row in rows -%}
+        <div class="row">
+          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][building]" value="{{row.Building}}">
+          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][room]" value="{{row.Room}}">
+          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][day]" value="{{row.Day}}">
+          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][start]" value="{{row.Start}}">
+          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][end]" value="{{row.End}}">
+          {{del_row()}}
+        </div>
+        {% endfor -%}
+
+        <div class="row justify-content-center">
+          <button type="button" class="col-2 btn btn-primary ns-add-row my-3">Aggiungi</button>
+          <button type="button" class="col-2 btn btn-danger ns-del-subject my-3">Rimuovi materia</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+{% endmacro %}
+
+<div class="row text-center">
+  <p class="display-1 my-0">Creazione calendario</p>
+</div>
+<div class="row text-center mb-3">
+  <p class="lead">Scegli i tuoi corsi ed i loro orari, a partire da quelli trovati nel calendario.</p>
+</div>
+
+<form id="subjectForm" method="post" action="/render_timetable" enctype="multipart/form-data">
+
+    <label for="bg" class="form-label">Sfondo:</label>
+  <input type="file" class="form-control" name="bg">
+
+<div class="accordion row my-3" id="allSubjects">
+  {%- for subject in subjects -%}
+    {% set key = "subject-" ~ loop.index0 %}
+    {{ accordion_item(subject.id, subject.name, key, subject.rows) }}
+  {%- endfor -%}
+</div>
+</form>
+
+<div class="input-group">
+  <span class="input-group-text">Nuova materia</span>
+  <input type="text" class="form-control" id="newSubjectName">
+  <button type="button" class="btn btn-outline-secondary" id="addSubject">Aggiungi</button>
+</div>
+
+<button form="subjectForm" type="submit" class="mt-3 btn btn-primary">Genera calendario</button>
+
+<script>
+function addRow(event) {
+    // add one more row
+    const buttons = event.target.parentElement;
+    const container = buttons.parentElement;
+    const key = container.parentElement.getAttribute('data-ns-key');
+
+    const newRow = document.createElement('div');
+    newRow.classList.add('row');
+    for (const name of ['building', 'room', 'day', 'start', 'end']) {
+      const input = document.createElement('input');
+      input.classList.add('form-control', 'col');
+      input.setAttribute('type', 'text');
+      input.setAttribute('name', `${key}[${container.children.length - 1}][${name}]`);
+      newRow.appendChild(input);
+    }
+    newRow.innerHTML += '{{del_row()}}';
+    newRow.children[newRow.children.length - 1].addEventListener('click', deleteRow);
+    container.insertBefore(newRow, buttons);
+  }
+
+function deleteRow(event) {
+    // remove the row
+    event.target.parentElement.remove();
+}
+
+function deleteSubject(event) {
+    // remove the subject
+    event.target.parentElement.parentElement.parentElement.parentElement.parentElement.remove();
+}
+
+{% set key_placeholder = "KEY_PLACEHOLDER" %}
+{% set name_placeholder = "NAME_PLACEHOLDER" %}
+const EMPTY_SUBJECT_HTML = `
+{{ accordion_item(key_placeholder, name_placeholder, key_placeholder, []) }}
+`;
+
+document.querySelectorAll('.ns-add-row').forEach((button) => {
+  button.addEventListener('click', addRow)});
+
+
+document.querySelectorAll('.ns-del-row').forEach((button) => {
+  button.addEventListener('click', deleteRow)});
+
+document.querySelectorAll('.ns-del-subject').forEach((button) => {
+  button.addEventListener('click', deleteSubject)});
+
+document.getElementById('addSubject').addEventListener('click', (event) => {
+  const subjects = document.querySelectorAll('.accordion-item');
+  document.getElementById('allSubjects').insertAdjacentHTML('beforeend', EMPTY_SUBJECT_HTML
+    .replace(/{{key_placeholder}}/g, 'subject-' + subjects.length)
+    .replace(/{{name_placeholder}}/g, document.getElementById('newSubjectName').value));
+  const newSubject = document.getElementById('subject-' + subjects.length);
+  newSubject.querySelector('.ns-add-row').addEventListener('click', addRow);
+  newSubject.querySelector('.ns-del-subject').addEventListener('click', deleteSubject);
+});
+</script>
+{% endblock %}
