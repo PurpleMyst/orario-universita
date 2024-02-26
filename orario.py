@@ -2,6 +2,7 @@ import random
 import re
 import subprocess
 import colorsys
+import tempfile
 from itertools import chain
 from pathlib import Path
 
@@ -79,14 +80,11 @@ def load_calendar(path):
 
 
 def split_years(cal: pd.DataFrame):
-    # print("-" * 6)
     rows = cal.iterrows()
     _, first_row = next(rows)  # type: ignore
     last = first_row["Day"]
     for i, row in rows:
-        # print(f"{i=} {row['Name']=} | {row['Day']=} {last=}")
         if DAYS.index(row["Day"]) < DAYS.index(last):
-            # print(f"Splitting at {i=}")
             year, rest = cal.iloc[:i], cal.iloc[i:]
             rest = rest.reset_index(drop=True)
             return year, rest
@@ -127,88 +125,79 @@ def choose_subjects():
 # https://stackoverflow.com/a/49819417/13204109
 def parse_multi_form(form):
     result = {}
-    for whole_key in form:
-        value = form[whole_key]
+    for full_key in form:
+        value = form[full_key]
+
         key_path = []
-        while whole_key:
-            if "[" in whole_key:
-                k, r = whole_key.split("[", 1)
+        while full_key:
+            if "[" in full_key:
+                k, r = full_key.split("[", 1)
                 key_path.append(k)
-                if r[0] == "]":
-                    key_path.append("")
-                whole_key = r.replace("]", "", 1)
+                assert r[0] != "]"
+                full_key = r.replace("]", "", 1)
             else:
-                key_path.append(whole_key)
+                key_path.append(full_key)
                 break
+
         sub_data = result
-        for i, k in enumerate(key_path):
-            if k.isdigit():
-                k = int(k)
-            if i + 1 < len(key_path):
-                if not isinstance(sub_data, dict):
-                    break
-                if k in sub_data:
-                    sub_data = sub_data[k]
-                else:
-                    sub_data[k] = {}
-                    sub_data = sub_data[k]
-            else:
-                if isinstance(sub_data, dict):
-                    sub_data[k] = value
+        last_key = key_path.pop()
+        for k in key_path:
+            assert isinstance(sub_data, dict)
+            sub_data = sub_data.setdefault(int(k) if k.isdigit() else k, {})
+        assert isinstance(sub_data, dict)
+        sub_data[last_key] = value
 
     return result
 
 
 @app.route("/render_timetable", methods=["POST"])
 def route_render_timetable():
-    data = parse_multi_form(request.form)
+    pdf_data = parse_multi_form(request.form)
 
     has_bg = False
-    if request.files["bg"]:
-        request.files["bg"].save("bg.png")
+    if bg_file := request.files["bg"]:
+        bg_file.save("bg.png")
         has_bg = True
-    print(has_bg)
-
-    i = 0
 
     cells = []
-    for subject in data.values():
+    for subject in pdf_data.values():
         name = subject.pop("name")
-        color = subject.pop("color", None)
-        for row in subject.values():
-            print(repr(row))
-            cells.append(
-                {
-                    "name": name.title(),
-                    "room": f"{row['room']} ({row['building']})",
-                    "color": color.lstrip("#"),
-                    "day": 2 + DAYS.index(row["day"]),
-                    "start": 2 + HOURS.index(row["start"]),
-                    "end": 2 + HOURS.index(row["end"]),
-                    "total_width": f"{CELL_TOTAL_WIDTH:.2}cm",
-                    "text_width": f"{CELL_TEXT_WIDTH:.2}cm",
-                }
-            )
-            i += 1
+        color = subject.pop("color", "#000000")
+        cells.extend(
+            {
+                "name": name.title(),
+                "room": f"{row['room']} ({row['building']})",
+                "color": color.lstrip("#"),
+                "day": 2 + DAYS.index(row["day"]),
+                "start": 2 + HOURS.index(row["start"]),
+                "end": 2 + HOURS.index(row["end"]),
+                "total_width": f"{CELL_TOTAL_WIDTH:.2}cm",
+                "text_width": f"{CELL_TEXT_WIDTH:.2}cm",
+            }
+            for row in subject.values
+        )
 
-    orario = render_template(
+    texsrc = render_template(
         "orario.tex",
         cells=cells,
         times=HOURS,
-        colsep=f"{COL_SEP}cm",
-        rowsep=f"{ROW_SEP}cm",
-        bg=has_bg,
+        col_sep=f"{COL_SEP}cm",
+        row_sep=f"{ROW_SEP}cm",
+        has_bg=has_bg,
+        language="italian",
     )
-    Path("rendered_orario.tex").write_text(orario, encoding="utf-8")
-    subprocess.run(["pdflatex", "-halt-on-error", "rendered_orario.tex"], check=True)
-    data = Path("rendered_orario.pdf").read_bytes()
-    response = make_response(data)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        texfile = Path(tmpdir, "rendered_orario.tex")
+        texfile.write_text(texsrc, encoding="utf-8")
+        subprocess.run(["pdflatex", "-halt-on-error", texfile, f"-output-directory={tmpdir}"], check=True)
+        pdf_data = Path(tmpdir, "rendered_orario.pdf").read_bytes()
+    response = make_response(pdf_data)
     response.headers["Content-Type"] = "application/pdf"
     response.headers["Content-Disposition"] = "inline; filename=orario.pdf"
     return response
 
 
-@app.route("/calendar", methods=["GET", "POST"])
+@app.route("/show_calendar", methods=["GET", "POST"])
 def show_calendar():
     if request.method == "GET":
         return render_template("calendar_choose.html")

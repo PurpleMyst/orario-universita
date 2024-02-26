@@ -1,25 +1,22 @@
-{% set firstcolsep = "-5mm" %}
-% \documentclass[tikz]{standalone}
+{% set first_col_sep = "-5mm" %}
+
 \documentclass[landscape,a4paper,12pt]{article}
 \usepackage[top=0mm, bottom=0mm, outer=0mm, inner=0mm]{geometry}
 
-% \usepackage[utf8]{inputenc}
+\usepackage[utf8]{inputenc}
+\usepackage[{{language if language is not none else "italian"}}]{babel}
 
-\usepackage[italian]{babel}
-
-\usepackage{adjustbox}
-
-% \usepackage[sfdefault]{roboto}  %% Option 'sfdefault' only if the base font of the document is to be sans serif
 \usepackage[T1]{fontenc}
 \usepackage{helvet}
-\usepackage{contour}
 \renewcommand{\familydefault}{\sfdefault}
+
+\usepackage[outline]{contour}
 
 \usepackage{tikz}
 \usetikzlibrary{calc,matrix,fit,backgrounds}
 
 % https://tex.stackexchange.com/a/583319/260531
-{% if bg %}
+{% if has_bg %}
 \AddToHook{shipout/background}{ %
     \put (0in,-\paperheight){\includegraphics[width=\paperwidth,height=\paperheight]{bg}} %
 }
@@ -33,11 +30,13 @@
         row 1/.style={nodes={text width=3cm, text centered, text=white, font=\large\bfseries}},
         column 1/.style={anchor=center, nodes={text=white, font=\large\bfseries}},
         row 1 column 1/.style={nodes={text width=0cm, inner sep=0cm}},
-        column sep={{colsep}}, row sep={{rowsep}}] 
-    (timetable) {
-        &[{{firstcolsep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-10mm]
-        {% for time in times %} \contour{black}{ {{-time-}} } &[{{firstcolsep}}]        &         &           &         &         \\ 
-        {% endfor -%} };
+        column sep={{col_sep}}, row sep={{row_sep}}
+    ] (timetable) {
+        &[{{first_col_sep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-10mm]
+        {% for time in times -%} 
+        \contour{black}{ {{-time-}} } &[{{first_col_sep}}]        &         &           &         &         \\
+        {%- endfor %} 
+    };
     {% for cell in cells %}
     {% set key = "cell" ~ loop.index %}
     \definecolor{cellcolor}{HTML}{ {{-cell.color-}} };
