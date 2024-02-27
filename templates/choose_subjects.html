@@ -2,7 +2,9 @@
 {% block title %}Scegli i corsi{% endblock %}
 {% block content %}
 
-{% macro del_row() %}<a href="#" class="col-auto link-underline-opacity-0 icon-link ns-del-row" >❌</a>{% endmacro %}
+{% macro del_row_button() -%}
+<a href="#" class="col-auto link-underline-opacity-0 icon-link ns-del-row" onclick="deleteRow(this)" >❌</a>
+{%- endmacro %}
 
 {% macro accordion_item(id, name, key, rows) %}
 <div class="accordion-item">
@@ -33,13 +35,13 @@
           <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][day]" value="{{row.Day}}">
           <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][start]" value="{{row.Start}}">
           <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][end]" value="{{row.End}}">
-          {{del_row()}}
+          {{del_row_button()}}
         </div>
         {% endfor -%}
 
         <div class="row justify-content-center">
-          <button type="button" class="col-2 btn btn-primary ns-add-row my-3">Aggiungi</button>
-          <button type="button" class="col-2 btn btn-danger ns-del-subject my-3">Rimuovi materia</button>
+          <button type="button" class="col-2 btn btn-primary ns-add-row my-3" onclick="addRow(this)" >Aggiungi</button>
+          <button type="button" class="col-2 btn btn-danger ns-del-subject my-3" onclick="deleteSubject(this)" >Rimuovi materia</button>
         </div>
       </div>
     </div>
@@ -76,9 +78,9 @@
 <button form="subjectForm" type="submit" class="mt-3 btn btn-primary">Genera calendario</button>
 
 <script>
-function addRow(event) {
+function addRow(target) {
     // add one more row
-    const buttons = event.target.parentElement;
+    const buttons = target.parentElement;
     const container = buttons.parentElement;
     const key = container.parentElement.getAttribute('data-ns-key');
 
@@ -91,19 +93,19 @@ function addRow(event) {
       input.setAttribute('name', `${key}[${container.children.length - 1}][${name}]`);
       newRow.appendChild(input);
     }
-    newRow.innerHTML += '{{del_row()}}';
+    newRow.innerHTML += '{{del_row_button()}}';
     newRow.children[newRow.children.length - 1].addEventListener('click', deleteRow);
     container.insertBefore(newRow, buttons);
   }
 
-function deleteRow(event) {
+function deleteRow(target) {
     // remove the row
-    event.target.parentElement.remove();
+    target.parentElement.remove();
 }
 
-function deleteSubject(event) {
+function deleteSubject(target) {
     // remove the subject
-    event.target.parentElement.parentElement.parentElement.parentElement.parentElement.remove();
+    target.parentElement.parentElement.parentElement.parentElement.parentElement.remove();
 }
 
 {% set key_placeholder = "KEY_PLACEHOLDER" %}
@@ -112,24 +114,13 @@ const EMPTY_SUBJECT_HTML = `
 {{ accordion_item(key_placeholder, name_placeholder, key_placeholder, []) }}
 `;
 
-document.querySelectorAll('.ns-add-row').forEach((button) => {
-  button.addEventListener('click', addRow)});
-
-
-document.querySelectorAll('.ns-del-row').forEach((button) => {
-  button.addEventListener('click', deleteRow)});
-
-document.querySelectorAll('.ns-del-subject').forEach((button) => {
-  button.addEventListener('click', deleteSubject)});
-
 document.getElementById('addSubject').addEventListener('click', (event) => {
   const subjects = document.querySelectorAll('.accordion-item');
+  const newSubjectKey = crypto.randomUUID();
   document.getElementById('allSubjects').insertAdjacentHTML('beforeend', EMPTY_SUBJECT_HTML
-    .replace(/{{key_placeholder}}/g, 'subject-' + subjects.length)
+    .replace(/{{key_placeholder}}/g, newSubjectKey)
     .replace(/{{name_placeholder}}/g, document.getElementById('newSubjectName').value));
-  const newSubject = document.getElementById('subject-' + subjects.length);
-  newSubject.querySelector('.ns-add-row').addEventListener('click', addRow);
-  newSubject.querySelector('.ns-del-subject').addEventListener('click', deleteSubject);
+  const newSubject = document.getElementById(newSubjectKey);
 });
 </script>
 {% endblock %}

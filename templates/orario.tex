@@ -4,13 +4,14 @@
 \usepackage[top=0mm, bottom=0mm, outer=0mm, inner=0mm]{geometry}
 
 \usepackage[utf8]{inputenc}
-\usepackage[{{language if language is not none else "italian"}}]{babel}
+\usepackage[italian]{babel}
 
 \usepackage[T1]{fontenc}
 \usepackage{helvet}
 \renewcommand{\familydefault}{\sfdefault}
 
 \usepackage[outline]{contour}
+\contourlength{1pt}
 
 \usepackage{tikz}
 \usetikzlibrary{calc,matrix,fit,backgrounds}
@@ -22,33 +23,38 @@
 }
 {% endif %}
 
+\definecolor{textcolor}{HTML}{FFFFFF}
+
+\tikzset{
+    marker/.style={text=textcolor, font=\fontsize{16}{16}\selectfont\bfseries},
+}
+
 \begin{document}\centering
 
 \begin{tikzpicture}
     \matrix[
         matrix of nodes, nodes in empty cells, 
-        row 1/.style={nodes={text width=3cm, text centered, text=white, font=\large\bfseries}},
-        column 1/.style={anchor=center, nodes={text=white, font=\large\bfseries}},
+        row 1/.style={nodes={text width=3cm, text centered, marker}},
+        column 1/.style={anchor=center, nodes={marker}},
         row 1 column 1/.style={nodes={text width=0cm, inner sep=0cm}},
         column sep={{col_sep}}, row sep={{row_sep}}
     ] (timetable) {
-        &[{{first_col_sep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-10mm]
+        &[{{first_col_sep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-15mm]
         {% for time in times -%} 
         \contour{black}{ {{-time-}} } &[{{first_col_sep}}]        &         &           &         &         \\
         {%- endfor %} 
     };
     {% for cell in cells %}
     {% set key = "cell" ~ loop.index %}
-    \definecolor{cellcolor}{HTML}{ {{-cell.color-}} };
+    \definecolor{cellcolor}{HTML}{ {{-cell.color-}} }
+    \definecolor{celltextcolor}{HTML}{ {{-cell.text_color-}} }
     \coordinate ({{key}} start) at (timetable-{{cell.start}}-{{cell.day}}.south |- timetable-{{cell.start}}-1.south);
     \coordinate ({{key}} end) at (timetable-{{cell.end}}-{{cell.day}}.south |- timetable-{{cell.end}}-1.south);
-    \node[rounded corners=2mm, fill=cellcolor, minimum width={{cell.total_width}},inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
-    \node[anchor=center,color=white] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering {{cell.name}}}};
-    \node[above,color=white,font=\tiny] at ({{key}}.south) {\parbox{ {{-cell.text_width-}} }{\centering {{cell.room}}}};
+    \node[rounded corners=2mm, shading = axis, shading angle=135, left color=cellcolor, right color=cellcolor!80!black, minimum width={{cell.total_width}}, inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
+    \node[anchor=center, text=celltextcolor] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{16}{16}\selectfont {{cell.name}}}};
+    \node[above, text=celltextcolor] at ({{key}}.south) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{11.5}{11.5}\selectfont {{cell.room}}}};
     {% endfor %}
-    % expand bounding box to the right for more padding
     \path (current bounding box.east) -- ++(0.25cm, 0);
-    % \path (current bounding box.south) -- ++(0, -0.25cm);
     \begin{scope}[on background layer]
         \foreach \y in {2,..., {{-1 + times|length-}} }
         \draw[help lines] (timetable-\y-1.south west -| current bounding box.west) -- (timetable-\y-1.south west -| current bounding box.east);

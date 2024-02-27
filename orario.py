@@ -1,7 +1,7 @@
+import colorsys
 import random
 import re
 import subprocess
-import colorsys
 import tempfile
 from itertools import chain
 from pathlib import Path
@@ -14,13 +14,12 @@ from slugify import slugify
 COLUMNS = ["Day", "Name", "CFU", "Teacher", "Room", "Building", "Start", "End"]
 
 DAYS = ("LUN", "MAR", "MER", "GIO", "VEN")
-HOURS = [f"{h:02d}:00" for h in range(8, 19)]
+HOURS = [f"{h:02d}:00" for h in range(8, 18)]
 
 CELL_TEXT_WIDTH = 3.5  # cm
 CELL_TOTAL_WIDTH = CELL_TEXT_WIDTH + 0.5
 COL_SEP = 2
-ROW_SEP = 1.2
-
+ROW_SEP = 1.25 * 11 / len(HOURS)
 
 TO_HTML_KWARGS = dict(
     classes=["table", "table-hover", "border", "border-primary"],
@@ -28,7 +27,6 @@ TO_HTML_KWARGS = dict(
     index=False,
 )
 
-# CORSO 2188 - INGEGNERIA CIBERNETICA - CLASSE L-8
 COURSE_RE = re.compile(
     r"CORSO\s*(?P<id>\d+) \s*-\s* (?P<name>[\w\s]+) \s*-\s* CLASSE\s*(?P<class>[\w-]+)",
     re.VERBOSE | re.IGNORECASE | re.MULTILINE | re.DOTALL,
@@ -59,8 +57,17 @@ app = Flask(__name__)
 
 
 def random_hex_color():
-    h,s,l = random.random(), 0.5 + random.random()/2.0, 0.4 + random.random()/5.0
-    r,g,b = [int(256*i) for i in colorsys.hls_to_rgb(h,l,s)]
+    while True:
+        h, s, l = (
+            random.random(),
+            0.5 + random.random() / 2.0,
+            0.4 + random.random() / 5.0,
+        )
+        r, g, b = [int(256 * i) for i in colorsys.hls_to_rgb(h, l, s)]
+        yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000
+        if yiq < 128:
+            # ensure text is readable
+            break
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
@@ -152,7 +159,8 @@ def parse_multi_form(form):
 
 @app.route("/render_timetable", methods=["POST"])
 def route_render_timetable():
-    pdf_data = parse_multi_form(request.form)
+    form_data = parse_multi_form(request.form)
+    print(f"\x1b[32m{form_data}\x1b[0m")
 
     has_bg = False
     if bg_file := request.files["bg"]:
@@ -160,21 +168,22 @@ def route_render_timetable():
         has_bg = True
 
     cells = []
-    for subject in pdf_data.values():
+    for subject in form_data.values():
         name = subject.pop("name")
         color = subject.pop("color", "#000000")
         cells.extend(
             {
-                "name": name.title(),
+                "name": name.capitalize(),
                 "room": f"{row['room']} ({row['building']})",
                 "color": color.lstrip("#"),
+                "text_color": "FFFFFF",
                 "day": 2 + DAYS.index(row["day"]),
                 "start": 2 + HOURS.index(row["start"]),
                 "end": 2 + HOURS.index(row["end"]),
                 "total_width": f"{CELL_TOTAL_WIDTH:.2}cm",
                 "text_width": f"{CELL_TEXT_WIDTH:.2}cm",
             }
-            for row in subject.values
+            for row in subject.values()
         )
 
     texsrc = render_template(
@@ -189,7 +198,16 @@ def route_render_timetable():
     with tempfile.TemporaryDirectory() as tmpdir:
         texfile = Path(tmpdir, "rendered_orario.tex")
         texfile.write_text(texsrc, encoding="utf-8")
-        subprocess.run(["pdflatex", "-halt-on-error", texfile, f"-output-directory={tmpdir}"], check=True)
+        subprocess.run(
+            [
+                "latexmk",
+                "-pdf",
+                "-halt-on-error",
+                texfile,
+                f"-output-directory={tmpdir}",
+            ],
+            check=True,
+        )
         pdf_data = Path(tmpdir, "rendered_orario.pdf").read_bytes()
     response = make_response(pdf_data)
     response.headers["Content-Type"] = "application/pdf"
