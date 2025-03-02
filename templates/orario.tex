@@ -57,8 +57,7 @@
     \coordinate
         ({{key}} start) at ($ ({{key}} start top)!0.5!({{key}} start bottom) $);
     {% else %}
-    \coordinate
-        ({{key}} start) at (timetable-{{cell.start}}-{{cell.day}}.south |- timetable-{{cell.start}}-1.south);
+    {{ make_coord(key ~ " start", cell.start, cell.day) }}
     {% endif %}
     {% if cell.half_end %}
     {{ make_coord(key ~ " end top", cell.end, cell.day) }}
@@ -66,8 +65,7 @@
     \coordinate
         ({{key}} end) at ($ ({{key}} end top)!0.5!({{key}} end bottom) $);
     {% else %}
-    \coordinate
-        ({{key}} end) at (timetable-{{cell.end}}-{{cell.day}}.south |- timetable-{{cell.end}}-1.south);
+    {{ make_coord(key ~ " end", cell.end, cell.day) }}
     {% endif %}
     \node[rounded corners=2mm, shading = axis, shading angle=135, left color=cellcolor, right color=cellcolor!80!black, minimum width={{cell.total_width}}, inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
     \node[anchor=center, text=celltextcolor] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{ {{-name_fontsize-}} }{ {{-name_fontsize-}} }\selectfont {{cell.name}}}};
