@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "flask",
+#     "pandas",
+#     "pypdf",
+#     "python-slugify",
+# ]
+# ///
 import colorsys
 import random
 import re
@@ -11,21 +20,23 @@ from flask import Flask, make_response, render_template, request
 from pypdf import PdfReader
 from slugify import slugify
 
-COLUMNS = ["Day", "Name", "CFU", "Teacher", "Room", "Building", "Start", "End"]
+COLUMNS = ["Day", "Name", "CFU", "Teacher", "Room", "Start", "End"]
 
 DAYS = ("LUN", "MAR", "MER", "GIO", "VEN")
-HOURS = [f"{h:02d}:00" for h in range(8, 18)]
+
+HOURS = [f"{h:02d}:00" for h in range(8, 19)]
 
 CELL_TEXT_WIDTH = 3.5  # cm
 CELL_TOTAL_WIDTH = CELL_TEXT_WIDTH + 0.5
 COL_SEP = 2
+
 ROW_SEP = 1.25 * 11 / len(HOURS)
 
-TO_HTML_KWARGS = dict(
-    classes=["table", "table-hover", "border", "border-primary"],
-    justify="unset",
-    index=False,
-)
+TO_HTML_KWARGS = {
+    "classes": ["table", "table-hover", "border", "border-primary"],
+    "justify": "unset",
+    "index": False,
+}
 
 COURSE_RE = re.compile(
     r"CORSO\s*(?P<id>\d+) \s*-\s* (?P<name>[\w\s]+) \s*-\s* CLASSE\s*(?P<class>[\w-]+)",
@@ -36,15 +47,19 @@ TIMETABLE_ROW_RE = re.compile(
 (?P<day>LUN|MAR|MER|GIO|VEN)  # day of the week
 \s+
 (?:[ \w']+\sC\.I\.\s+-\s+Mod\.\s*(?:MODULO)?\s*)?  # integrated course name
-(?P<name>[\w '']+)  # name of the course
+(?P<name>[\w ',]+)  # name of the course
 \s+
 \((?P<cfu>\d+)\s+cfu\) # credits
 \s+-\s+
-(?P<teacher>\w\.\s*[\w ']+)  # teachera
+(?P<teacher>\w\.\s*[\w ']+)  # teacher
 \s+
-(?P<room>\w+)  # room
-\s+-\s+
-(?P<building>[.\w]+)  # building
+(?P<room>
+    aula\s+\w+\s+\(\w+\)\s+-\s+n\.\s*\w+
+    |
+    laboratorio\s+\w+\s+\(\w+\)\s+-\s+n\.\s*\w+
+    |
+    \w\d{3}\s+-\s+e\.\d+
+)  # room
 \s+
 (?P<start>\d{2}:\d{2})  # start time
 \s+-\s+
@@ -80,9 +95,7 @@ def load_calendar(path):
         course = m.groupdict()
     else:
         course = {"id": "???", "name": "???", "class": "???"}
-    data = chain.from_iterable(
-        TIMETABLE_ROW_RE.findall(p.extract_text()) for p in pdf.pages
-    )
+    data = chain.from_iterable(TIMETABLE_ROW_RE.findall(p.extract_text()) for p in pdf.pages)
     return course, pd.DataFrame(data, columns=COLUMNS)  # type: ignore
 
 
@@ -122,8 +135,7 @@ def choose_subjects():
             subject = subjects.setdefault(row["Name"], [])
             subject.append(row.to_dict())
         subjects = [
-            {"id": slugify(name), "name": name, "rows": rows}
-            for name, rows in subjects.items()
+            {"id": slugify(name), "name": name, "rows": rows} for name, rows in subjects.items()
         ]
 
     return render_template("choose_subjects.html", subjects=subjects)
@@ -160,7 +172,6 @@ def parse_multi_form(form):
 @app.route("/render_timetable", methods=["POST"])
 def route_render_timetable():
     form_data = parse_multi_form(request.form)
-    print(f"\x1b[32m{form_data}\x1b[0m")
 
     has_bg = False
     if bg_file := request.files["bg"]:
@@ -174,14 +185,16 @@ def route_render_timetable():
         cells.extend(
             {
                 "name": name.capitalize(),
-                "room": f"{row['room']} ({row['building']})",
+                "room": f"{row['room'].replace(chr(10), ' ')}",
                 "color": color.lstrip("#"),
                 "text_color": "FFFFFF",
                 "day": 2 + DAYS.index(row["day"]),
-                "start": 2 + HOURS.index(row["start"]),
-                "end": 2 + HOURS.index(row["end"]),
+                "start": 2 + HOURS.index(row["start"].replace(":30", ":00")),
+                "end": 2 + HOURS.index(row["end"].replace(":30", ":00")),
                 "total_width": f"{CELL_TOTAL_WIDTH:.2}cm",
                 "text_width": f"{CELL_TEXT_WIDTH:.2}cm",
+                "half_start": row["start"].endswith(":30"),
+                "half_end": row["end"].endswith(":30"),
             }
             for row in subject.values()
         )
@@ -190,10 +203,12 @@ def route_render_timetable():
         "orario.tex",
         cells=cells,
         times=HOURS,
-        col_sep=f"{COL_SEP}cm",
-        row_sep=f"{ROW_SEP}cm",
+        col_sep=COL_SEP,
+        row_sep=ROW_SEP,
         has_bg=has_bg,
         language="italian",
+        name_fontsize=12,
+        room_fontsize=8,
     )
     with tempfile.TemporaryDirectory() as tmpdir:
         texfile = Path(tmpdir, "rendered_orario.tex")

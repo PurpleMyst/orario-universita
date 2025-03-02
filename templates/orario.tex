@@ -36,7 +36,7 @@
         row 1/.style={nodes={text width=3cm, text centered, marker}},
         column 1/.style={anchor=center, nodes={marker}},
         row 1 column 1/.style={nodes={text width=0cm, inner sep=0cm}},
-        column sep={{col_sep}}, row sep={{row_sep}}
+        column sep={{col_sep}}cm, row sep={{row_sep}}cm
     ] (timetable) {
         &[{{first_col_sep}}] \contour{black}{Lunedì} & \contour{black}{Martedì} & \contour{black}{Mercoledì} & \contour{black}{Giovedì} & \contour{black}{Venerdì} \\[-15mm]
         {% for time in times -%} 
@@ -47,11 +47,31 @@
     {% set key = "cell" ~ loop.index %}
     \definecolor{cellcolor}{HTML}{ {{-cell.color-}} }
     \definecolor{celltextcolor}{HTML}{ {{-cell.text_color-}} }
-    \coordinate ({{key}} start) at (timetable-{{cell.start}}-{{cell.day}}.south |- timetable-{{cell.start}}-1.south);
-    \coordinate ({{key}} end) at (timetable-{{cell.end}}-{{cell.day}}.south |- timetable-{{cell.end}}-1.south);
+    {% macro make_coord(name, h, day) -%}
+        \coordinate
+            ({{name}}) at (timetable-{{h}}-{{day}}.south |- timetable-{{h}}-1.south);
+    {%endmacro %}
+    {% if cell.half_start %}
+    {{ make_coord(key ~ " start top", cell.start, cell.day) }}
+    {{ make_coord(key ~ " start bottom", cell.start+1, cell.day) }}
+    \coordinate
+        ({{key}} start) at ($ ({{key}} start top)!0.5!({{key}} start bottom) $);
+    {% else %}
+    \coordinate
+        ({{key}} start) at (timetable-{{cell.start}}-{{cell.day}}.south |- timetable-{{cell.start}}-1.south);
+    {% endif %}
+    {% if cell.half_end %}
+    {{ make_coord(key ~ " end top", cell.end, cell.day) }}
+    {{ make_coord(key ~ " end bottom", cell.end+1, cell.day) }}
+    \coordinate
+        ({{key}} end) at ($ ({{key}} end top)!0.5!({{key}} end bottom) $);
+    {% else %}
+    \coordinate
+        ({{key}} end) at (timetable-{{cell.end}}-{{cell.day}}.south |- timetable-{{cell.end}}-1.south);
+    {% endif %}
     \node[rounded corners=2mm, shading = axis, shading angle=135, left color=cellcolor, right color=cellcolor!80!black, minimum width={{cell.total_width}}, inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
-    \node[anchor=center, text=celltextcolor] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{16}{16}\selectfont {{cell.name}}}};
-    \node[above, text=celltextcolor] at ({{key}}.south) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{11.5}{11.5}\selectfont {{cell.room}}}};
+    \node[anchor=center, text=celltextcolor] at ({{key}}) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{ {{-name_fontsize-}} }{ {{-name_fontsize-}} }\selectfont {{cell.name}}}};
+    \node[above, text=celltextcolor] at ({{key}}.south) {\parbox{ {{-cell.text_width-}} }{\centering\fontsize{ {{-room_fontsize-}} }{ {{-room_fontsize-}} }\selectfont {{cell.room}}}};
     {% endfor %}
     \path (current bounding box.east) -- ++(0.25cm, 0);
     \begin{scope}[on background layer]

@@ -22,7 +22,6 @@
           </div>
 
         <div class="row">
-          <span class="text-center col"><strong>Edificio</strong></span>
           <span class="text-center col"><strong>Aula</strong></span>
           <span class="text-center col"><strong>Giorno</strong></span>
           <span class="text-center col"><strong>Inizio</strong></span>
@@ -32,7 +31,6 @@
 
         {% for row in rows -%}
         <div class="row">
-          <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][building]" value="{{row.Building}}">
           <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][room]" value="{{row.Room}}">
           <!-- <input class="form-control col" type="text" name="{{key}}[{{loop.index0}}][day]" value="{{row.Day}}"> -->
           <select name="{{key}}[{{loop.index0}}][day]" class="form-select col">
