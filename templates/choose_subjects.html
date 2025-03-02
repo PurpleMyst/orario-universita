@@ -118,13 +118,11 @@ function addRow(target) {
   }
 
 function deleteRow(target) {
-    // remove the row
-    target.parentElement.remove();
+    target.closest(".row").remove();
 }
 
 function deleteSubject(target) {
-    // remove the subject
-    target.parentElement.parentElement.parentElement.parentElement.parentElement.remove();
+    target.closest(".accordion-item").remove();
 }
 
 {% set key_placeholder = "KEY_PLACEHOLDER" %}
@@ -156,6 +154,8 @@ function updateYiq(input) {
     yiq.textContent = "Va bene!";
     yiq.classList.add("invisible");
   }
+
+  input.closest(".accordion-item").querySelector(".accordion-button").style.color = color;
 }
 document.querySelectorAll('.form-control-color').forEach(updateYiq);
 </script>
