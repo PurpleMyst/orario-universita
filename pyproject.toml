@@ -12,3 +12,6 @@ dependencies = [
     "pydantic",
     "pillow>=11.1.0",
 ]
+
+[tool.ruff]
+line-length = 100

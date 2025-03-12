@@ -1,127 +1,29 @@
-import colorsys
 import io
 import json
-import random
-import re
 import subprocess
 import tempfile
 from contextlib import chdir
-from itertools import chain
 from pathlib import Path
 from uuid import uuid4
 
-import pandas as pd
-import pydantic
 from flask import Flask, make_response, render_template, request
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
-from slugify import slugify
 
-COLUMNS = ["Day", "Name", "Room", "Start", "End"]
-
-DAYS = ("LUN", "MAR", "MER", "GIO", "VEN")
-
-HOURS = [f"{h:02d}:00" for h in range(8, 19)]
-
-CELL_TEXT_WIDTH = 3.5  # cm
-CELL_TOTAL_WIDTH = CELL_TEXT_WIDTH + 0.5
-COL_SEP = 2
-
-ROW_SEP = 1.25 * 11 / len(HOURS)
-
-CELLS_METADATA_KEY = "/PurpleMyst_Cells"
-
-TO_HTML_KWARGS = {
-    "classes": ["table", "table-hover", "border", "border-primary"],
-    "justify": "unset",
-    "index": False,
-}
-
-COURSE_RE = re.compile(
-    r"CORSO\s*(?P<id>\d+) \s*-\s* (?P<name>[\w\s]+) \s*-\s* CLASSE\s*(?P<class>[\w-]+)",
-    re.VERBOSE | re.IGNORECASE | re.MULTILINE | re.DOTALL,
+from .calendar_parsing import (
+    Cell,
+    cells_to_subjects,
+    extract_cells,
+    extract_subjects,
+    form_to_cells,
+    load_calendar,
+    years,
 )
-TIMETABLE_ROW_RE = re.compile(
-    r"""
-(?P<day>LUN|MAR|MER|GIO|VEN)  # day of the week
-\s+
-(?:[ \w']+\sC\.I\.\s+-\s+Mod\.\s*(?:MODULO)?\s*)?  # integrated course name
-(?P<name>[\w ',]+)  # name of the course
-\s+
-\((?:\d+)\s+cfu\) # credits
-\s+-\s+
-(?:\w\.\s*[\w ']+)  # teacher
-\s+
-(?P<room>
-    aula\s+\w+\s+\(\w+\)\s+-\s+n\.\s*\w+
-    |
-    laboratorio\s+\w+\s+\(\w+\)\s+-\s+n\.\s*\w+
-    |
-    \w\d{3}\s+-\s+e\.\d+
-)  # room
-\s+
-(?P<start>\d{2}:\d{2})  # start time
-\s+-\s+
-(?P<end>\d{2}:\d{2})  # end time
-""",
-    re.VERBOSE | re.IGNORECASE | re.MULTILINE | re.DOTALL,
-)
+from .configuration import CELLS_METADATA_KEY, COL_SEP, HOURS, ROW_SEP, TO_HTML_KWARGS
+from .utilities import iterator_index, parse_multi_form, random_hex_color
 
 app = Flask(__name__)
-
-
-class Cell(pydantic.BaseModel):
-    name: str
-    room: str
-    color: str
-    text_color: str
-    day: int
-    start: int
-    end: int
-    total_width: str
-    text_width: str
-    half_start: bool
-    half_end: bool
-
-
-def random_hex_color():
-    while True:
-        h, s, l = (
-            random.random(),
-            0.5 + random.random() / 2.0,
-            0.4 + random.random() / 5.0,
-        )
-        r, g, b = [int(256 * i) for i in colorsys.hls_to_rgb(h, l, s)]
-        yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000
-        if yiq < 128:
-            # ensure text is readable
-            break
-    return f"#{r:02X}{g:02X}{b:02X}"
-
-
 app.jinja_env.globals.update(random_hex_color=random_hex_color)
-
-
-def load_calendar(pdf):
-    if m := COURSE_RE.search(pdf.pages[0].extract_text()):
-        course = m.groupdict()
-    else:
-        course = {"id": "???", "name": "???", "class": "???"}
-    data = chain.from_iterable(TIMETABLE_ROW_RE.findall(p.extract_text()) for p in pdf.pages)
-    return course, pd.DataFrame(data, columns=COLUMNS)  # type: ignore
-
-
-def split_years(cal: pd.DataFrame):
-    rows = cal.iterrows()
-    _, first_row = next(rows)  # type: ignore
-    last = first_row["Day"]
-    for i, row in rows:
-        if DAYS.index(row["Day"]) < DAYS.index(last):
-            year, rest = cal.iloc[:i], cal.iloc[i:]
-            rest = rest.reset_index(drop=True)
-            return year, rest
-        last = row["Day"]
-    raise ValueError("No split found")
 
 
 @app.route("/")
@@ -129,87 +31,24 @@ def index():
     return render_template("index.html")
 
 
-def handle_day(idx, half):
-    hour = HOURS[idx - 2]
-    if half:
-        hour = hour.replace(":00", ":30")
-    return hour
-
-
 @app.route("/choose_subjects", methods=["POST"])
 def choose_subjects():
-    subjects = {}
-    colors = {}
-
     cal_file = request.files["file"]
     if cal_file:
         pdf = PdfReader(cal_file)  # type: ignore
-        if pdf.metadata and (cells := pdf.metadata.get(CELLS_METADATA_KEY)):
-            cells = map(Cell.model_validate, json.loads(str(cells)))
-
-            for cell in cells:
-                subjects.setdefault(cell.name, []).append(
-                    {
-                        "Day": DAYS[cell.day - 2],
-                        "Name": cell.name,
-                        "Start": handle_day(cell.start, cell.half_start),
-                        "End": handle_day(cell.end, cell.half_end),
-                        "Room": cell.room,
-                    }
-                )
-                colors.setdefault(cell.name, f"#{cell.color}")
+        if cells := extract_cells(pdf):
+            subjects = cells_to_subjects(cells)
         else:
-            _, rest = load_calendar(pdf)
+            _, calendar = load_calendar(pdf)
             year_chosen = int(request.form["year"])
             if year_chosen < 1:
                 raise ValueError("Year must be at least 1")
-            year = None
-            for _ in range(year_chosen):
-                year, rest = split_years(rest)
-            assert year is not None
-            for _, row in year.iterrows():
-                subject = subjects.setdefault(row["Name"], [])
-                subject.append(row.to_dict())
-
-        subjects = [
-            {
-                "id": slugify(name),
-                "color": colors.get(name, random_hex_color()),
-                "name": name,
-                "rows": rows,
-            }
-            for name, rows in subjects.items()
-        ]
+            year = iterator_index(years(calendar), year_chosen - 1)
+            subjects = extract_subjects(year)
+    else:
+        subjects = {}
 
     return render_template("choose_subjects.html", subjects=subjects)
-
-
-# https://stackoverflow.com/a/49819417/13204109
-def parse_multi_form(form):
-    result = {}
-    for full_key in form:
-        value = form[full_key]
-
-        key_path = []
-        while full_key:
-            if "[" in full_key:
-                k, r = full_key.split("[", 1)
-                key_path.append(k)
-                assert r[0] != "]"
-                full_key = r.replace("]", "", 1)
-            else:
-                key_path.append(full_key)
-                break
-
-        sub_data = result
-        last_key = key_path.pop()
-        for k in key_path:
-            assert isinstance(sub_data, dict)
-            sub_data = sub_data.setdefault(int(k) if k.isdigit() else k, {})
-        assert isinstance(sub_data, dict)
-        sub_data[last_key] = value
-
-    return result
 
 
 def do_render_timetable(tmpdir: str, cells: list[Cell], bg: str | None):
@@ -253,31 +92,12 @@ def do_render_timetable(tmpdir: str, cells: list[Cell], bg: str | None):
 def route_render_timetable():
     form_data = parse_multi_form(request.form)
 
-    cells = []
-    for subject in form_data.values():
-        name = subject.pop("name")
-        color = subject.pop("color", "#000000")
-        cells.extend(
-            Cell(
-                name=name.capitalize(),
-                room=f"{row['room'].replace(chr(10), ' ')}",
-                color=color.lstrip("#"),
-                text_color="FFFFFF",
-                day=2 + DAYS.index(row["day"]),
-                start=2 + HOURS.index(row["start"].replace(":30", ":00")),
-                end=2 + HOURS.index(row["end"].replace(":30", ":00")),
-                total_width=f"{CELL_TOTAL_WIDTH:.2}cm",
-                text_width=f"{CELL_TEXT_WIDTH:.2}cm",
-                half_start=row["start"].endswith(":30"),
-                half_end=row["end"].endswith(":30"),
-            )
-            for row in subject.values()
-        )
-
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        cells = form_to_cells(form_data)
+
         if bg_file := request.files["bg"]:
             bg_file_dest = Path(tmpdir, f"{uuid4()}.png")
-            Image.open(bg_file).save(bg_file_dest, "png")
+            Image.open(bg_file).save(bg_file_dest, "png")  # type: ignore
             bg_file_dest = bg_file_dest.name
         else:
             bg_file_dest = None
@@ -291,17 +111,15 @@ def show_calendar():
         return render_template("calendar_choose.html")
 
     cal_file = request.files["file"]
-    course, cal = load_calendar(cal_file)
-    year1, rest = split_years(cal)
-    year2, rest = split_years(rest)
-    year3, _ = split_years(rest)
+    course, calendar = load_calendar(cal_file)
+    [year1, year2, year3] = years(calendar)
     return render_template(
         "calendar_show.html",
         course=course,
         year1=year1.to_html(**TO_HTML_KWARGS),
         year2=year2.to_html(**TO_HTML_KWARGS),
         year3=year3.to_html(**TO_HTML_KWARGS),
-        cal=cal.to_html(**TO_HTML_KWARGS),
+        cal=calendar.to_html(**TO_HTML_KWARGS),
     )
 
 
