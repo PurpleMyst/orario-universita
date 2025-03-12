@@ -1,14 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "flask",
-#     "pandas",
-#     "pypdf",
-#     "python-slugify",
-#     "pydantic",
-#     "pillow>=11.1.0",
-# ]
-# ///
 import colorsys
 import io
 import json

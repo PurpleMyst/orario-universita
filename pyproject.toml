@@ -1,0 +1,14 @@
+[project]
+name = "orario-universita"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flask",
+    "pandas",
+    "pypdf",
+    "python-slugify",
+    "pydantic",
+    "pillow>=11.1.0",
+]
