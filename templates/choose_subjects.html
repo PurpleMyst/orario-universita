@@ -64,7 +64,7 @@
 <form id="subjectForm" method="post" action="/render_timetable" enctype="multipart/form-data">
 
     <label for="bg" class="form-label">Sfondo:</label>
-  <input type="file" class="form-control" name="bg">
+  <input type="file" class="form-control" name="bg" accept="image/*" >
 
 <div class="accordion row my-3" id="allSubjects">
   {%- for subject in subjects -%}
@@ -91,7 +91,7 @@ function addRow(target) {
 
     const newRow = document.createElement('div');
     newRow.classList.add('row');
-    for (const name of ['building', 'room', 'day', 'start', 'end']) {
+    for (const name of ['room', 'day', 'start', 'end']) {
       if (name === 'day') {
         const select = document.createElement('select');
         select.classList.add('form-select', 'col');

@@ -9,7 +9,6 @@
 #     "pillow>=11.1.0",
 # ]
 # ///
-import codecs
 import colorsys
 import io
 import json
