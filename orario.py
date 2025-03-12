@@ -5,22 +5,31 @@
 #     "pandas",
 #     "pypdf",
 #     "python-slugify",
+#     "pydantic",
+#     "pillow>=11.1.0",
 # ]
 # ///
+import codecs
 import colorsys
+import io
+import json
 import random
 import re
 import subprocess
 import tempfile
+from contextlib import chdir
 from itertools import chain
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
+import pydantic
 from flask import Flask, make_response, render_template, request
-from pypdf import PdfReader
+from PIL import Image
+from pypdf import PdfReader, PdfWriter
 from slugify import slugify
 
-COLUMNS = ["Day", "Name", "CFU", "Teacher", "Room", "Start", "End"]
+COLUMNS = ["Day", "Name", "Room", "Start", "End"]
 
 DAYS = ("LUN", "MAR", "MER", "GIO", "VEN")
 
@@ -31,6 +40,8 @@ CELL_TOTAL_WIDTH = CELL_TEXT_WIDTH + 0.5
 COL_SEP = 2
 
 ROW_SEP = 1.25 * 11 / len(HOURS)
+
+CELLS_METADATA_KEY = "/PurpleMyst_Cells"
 
 TO_HTML_KWARGS = {
     "classes": ["table", "table-hover", "border", "border-primary"],
@@ -49,9 +60,9 @@ TIMETABLE_ROW_RE = re.compile(
 (?:[ \w']+\sC\.I\.\s+-\s+Mod\.\s*(?:MODULO)?\s*)?  # integrated course name
 (?P<name>[\w ',]+)  # name of the course
 \s+
-\((?P<cfu>\d+)\s+cfu\) # credits
+\((?:\d+)\s+cfu\) # credits
 \s+-\s+
-(?P<teacher>\w\.\s*[\w ']+)  # teacher
+(?:\w\.\s*[\w ']+)  # teacher
 \s+
 (?P<room>
     aula\s+\w+\s+\(\w+\)\s+-\s+n\.\s*\w+
@@ -69,6 +80,20 @@ TIMETABLE_ROW_RE = re.compile(
 )
 
 app = Flask(__name__)
+
+
+class Cell(pydantic.BaseModel):
+    name: str
+    room: str
+    color: str
+    text_color: str
+    day: int
+    start: int
+    end: int
+    total_width: str
+    text_width: str
+    half_start: bool
+    half_end: bool
 
 
 def random_hex_color():
@@ -89,8 +114,7 @@ def random_hex_color():
 app.jinja_env.globals.update(random_hex_color=random_hex_color)
 
 
-def load_calendar(path):
-    pdf = PdfReader(path)
+def load_calendar(pdf):
     if m := COURSE_RE.search(pdf.pages[0].extract_text()):
         course = m.groupdict()
     else:
@@ -117,25 +141,56 @@ def index():
     return render_template("index.html")
 
 
+def handle_day(idx, half):
+    hour = HOURS[idx - 2]
+    if half:
+        hour = hour.replace(":00", ":30")
+    return hour
+
+
 @app.route("/choose_subjects", methods=["POST"])
 def choose_subjects():
     subjects = {}
+    colors = {}
 
     cal_file = request.files["file"]
     if cal_file:
-        _, rest = load_calendar(cal_file)
-        year_chosen = int(request.form["year"])
-        if year_chosen < 1:
-            raise ValueError("Year must be at least 1")
-        year = None
-        for _ in range(year_chosen):
-            year, rest = split_years(rest)
-        assert year is not None
-        for _, row in year.iterrows():
-            subject = subjects.setdefault(row["Name"], [])
-            subject.append(row.to_dict())
+        pdf = PdfReader(cal_file)  # type: ignore
+        if pdf.metadata and (cells := pdf.metadata.get(CELLS_METADATA_KEY)):
+            cells = map(Cell.model_validate, json.loads(str(cells)))
+
+            for cell in cells:
+                subjects.setdefault(cell.name, []).append(
+                    {
+                        "Day": DAYS[cell.day - 2],
+                        "Name": cell.name,
+                        "Start": handle_day(cell.start, cell.half_start),
+                        "End": handle_day(cell.end, cell.half_end),
+                        "Room": cell.room,
+                    }
+                )
+                colors.setdefault(cell.name, f"#{cell.color}")
+        else:
+            _, rest = load_calendar(pdf)
+            year_chosen = int(request.form["year"])
+            if year_chosen < 1:
+                raise ValueError("Year must be at least 1")
+            year = None
+            for _ in range(year_chosen):
+                year, rest = split_years(rest)
+            assert year is not None
+            for _, row in year.iterrows():
+                subject = subjects.setdefault(row["Name"], [])
+                subject.append(row.to_dict())
+
         subjects = [
-            {"id": slugify(name), "name": name, "rows": rows} for name, rows in subjects.items()
+            {
+                "id": slugify(name),
+                "color": colors.get(name, random_hex_color()),
+                "name": name,
+                "rows": rows,
+            }
+            for name, rows in subjects.items()
         ]
 
     return render_template("choose_subjects.html", subjects=subjects)
@@ -169,65 +224,77 @@ def parse_multi_form(form):
     return result
 
 
+def do_render_timetable(tmpdir: str, cells: list[Cell], bg: str | None):
+    texsrc = render_template(
+        "orario.tex",
+        cells=[cell.model_dump() for cell in cells],
+        bg=bg,
+        times=HOURS,
+        col_sep=COL_SEP,
+        row_sep=ROW_SEP,
+        language="italian",
+        name_fontsize=12,
+        room_fontsize=8,
+    )
+
+    texfile = Path(tmpdir, "rendered_orario.tex")
+    texfile.write_text(texsrc, encoding="utf-8")
+    subprocess.run(
+        [
+            "latexmk",
+            "-pdf",
+            "-halt-on-error",
+            texfile,
+            f"-output-directory={tmpdir}",
+        ],
+        check=True,
+    )
+
+    writer = PdfWriter(clone_from=Path(tmpdir, "rendered_orario.pdf"))
+    writer.add_metadata({CELLS_METADATA_KEY: json.dumps([cell.model_dump() for cell in cells])})
+
+    data_buf = io.BytesIO()
+    writer.write(data_buf)
+    response = make_response(data_buf.getvalue())
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f"inline; filename=orario.pdf"
+    return response
+
+
 @app.route("/render_timetable", methods=["POST"])
 def route_render_timetable():
     form_data = parse_multi_form(request.form)
-
-    has_bg = False
-    if bg_file := request.files["bg"]:
-        bg_file.save("bg.png")
-        has_bg = True
 
     cells = []
     for subject in form_data.values():
         name = subject.pop("name")
         color = subject.pop("color", "#000000")
         cells.extend(
-            {
-                "name": name.capitalize(),
-                "room": f"{row['room'].replace(chr(10), ' ')}",
-                "color": color.lstrip("#"),
-                "text_color": "FFFFFF",
-                "day": 2 + DAYS.index(row["day"]),
-                "start": 2 + HOURS.index(row["start"].replace(":30", ":00")),
-                "end": 2 + HOURS.index(row["end"].replace(":30", ":00")),
-                "total_width": f"{CELL_TOTAL_WIDTH:.2}cm",
-                "text_width": f"{CELL_TEXT_WIDTH:.2}cm",
-                "half_start": row["start"].endswith(":30"),
-                "half_end": row["end"].endswith(":30"),
-            }
+            Cell(
+                name=name.capitalize(),
+                room=f"{row['room'].replace(chr(10), ' ')}",
+                color=color.lstrip("#"),
+                text_color="FFFFFF",
+                day=2 + DAYS.index(row["day"]),
+                start=2 + HOURS.index(row["start"].replace(":30", ":00")),
+                end=2 + HOURS.index(row["end"].replace(":30", ":00")),
+                total_width=f"{CELL_TOTAL_WIDTH:.2}cm",
+                text_width=f"{CELL_TEXT_WIDTH:.2}cm",
+                half_start=row["start"].endswith(":30"),
+                half_end=row["end"].endswith(":30"),
+            )
             for row in subject.values()
         )
 
-    texsrc = render_template(
-        "orario.tex",
-        cells=cells,
-        times=HOURS,
-        col_sep=COL_SEP,
-        row_sep=ROW_SEP,
-        has_bg=has_bg,
-        language="italian",
-        name_fontsize=12,
-        room_fontsize=8,
-    )
-    with tempfile.TemporaryDirectory() as tmpdir:
-        texfile = Path(tmpdir, "rendered_orario.tex")
-        texfile.write_text(texsrc, encoding="utf-8")
-        subprocess.run(
-            [
-                "latexmk",
-                "-pdf",
-                "-halt-on-error",
-                texfile,
-                f"-output-directory={tmpdir}",
-            ],
-            check=True,
-        )
-        pdf_data = Path(tmpdir, "rendered_orario.pdf").read_bytes()
-    response = make_response(pdf_data)
-    response.headers["Content-Type"] = "application/pdf"
-    response.headers["Content-Disposition"] = "inline; filename=orario.pdf"
-    return response
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        if bg_file := request.files["bg"]:
+            bg_file_dest = Path(tmpdir, f"{uuid4()}.png")
+            Image.open(bg_file).save(bg_file_dest, "png")
+            bg_file_dest = bg_file_dest.name
+        else:
+            bg_file_dest = None
+
+        return do_render_timetable(tmpdir, cells, bg_file_dest)
 
 
 @app.route("/show_calendar", methods=["GET", "POST"])

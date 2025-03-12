@@ -16,9 +16,9 @@
 \usetikzlibrary{calc,matrix,fit,backgrounds}
 
 % https://tex.stackexchange.com/a/583319/260531
-{% if has_bg %}
+{% if bg is not none %}
 \AddToHook{shipout/background}{ %
-    \put (0in,-\paperheight){\includegraphics[width=\paperwidth,height=\paperheight]{bg}} %
+    \put (0in,-\paperheight){\includegraphics[width=\paperwidth,height=\paperheight]{ {{bg}} }} %
 }
 {% endif %}
 

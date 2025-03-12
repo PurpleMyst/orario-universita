@@ -6,7 +6,7 @@
 <a href="#" class="col-auto link-underline-opacity-0 icon-link ns-del-row" onclick="deleteRow(this)" >❌</a>
 {%- endmacro %}
 
-{% macro accordion_item(id, name, key, rows) %}
+{% macro accordion_item(id, name, key, rows, color) %}
 <div class="accordion-item">
     <h2 class="accordion-header"><button type="button" class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#{{id}}">{{name}}</button></h2>
   <div id="{{id}}" class="accordion-collapse collapse" data-bs-parent="#allSubjects">
@@ -16,7 +16,7 @@
 
           <div class="input-group mb-3">
             <span class="input-group-text">Colore</span>
-            <input class="form-control form-control-color" autocomplete="off" type="color" name="{{key}}[color]" value="{{random_hex_color()}}"
+            <input class="form-control form-control-color" autocomplete="off" type="color" name="{{key}}[color]" value="{{color}}"
               oninput="updateYiq(this)">
             <span class="yiq input-group-text text-danger"></span>
           </div>
@@ -69,7 +69,7 @@
 <div class="accordion row my-3" id="allSubjects">
   {%- for subject in subjects -%}
     {% set key = "subject-" ~ loop.index0 %}
-    {{ accordion_item(subject.id, subject.name, key, subject.rows) }}
+    {{ accordion_item(subject.id, subject.name, key, subject.rows, subject.color) }}
   {%- endfor -%}
 </div>
 </form>
@@ -128,7 +128,7 @@ function deleteSubject(target) {
 {% set key_placeholder = "KEY_PLACEHOLDER" %}
 {% set name_placeholder = "NAME_PLACEHOLDER" %}
 const EMPTY_SUBJECT_HTML = `
-{{ accordion_item(key_placeholder, name_placeholder, key_placeholder, []) }}
+{{ accordion_item(key_placeholder, name_placeholder, key_placeholder, [], random_hex_color()) }}
 `;
 
 document.getElementById('addSubject').addEventListener('click', (event) => {
@@ -138,6 +138,7 @@ document.getElementById('addSubject').addEventListener('click', (event) => {
     .replace(/{{key_placeholder}}/g, newSubjectKey)
     .replace(/{{name_placeholder}}/g, document.getElementById('newSubjectName').value));
   const newSubject = document.getElementById(newSubjectKey);
+  document.querySelectorAll('.form-control-color').forEach(updateYiq);
 });
 
 function updateYiq(input) {
