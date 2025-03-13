@@ -28,10 +28,9 @@ from .configuration import (
     ROW_SEP,
     TO_HTML_KWARGS,
 )
-from .utilities import iterator_index, parse_multi_form, random_hex_color
+from .utilities import iterator_index, parse_multi_form
 
 app = Flask(__name__)
-app.jinja_env.globals.update(random_hex_color=random_hex_color)
 
 
 @app.route("/")

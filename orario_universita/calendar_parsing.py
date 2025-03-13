@@ -150,4 +150,5 @@ def form_to_cells(form_data):
             )
             for row in subject.values()
         )
+    print(cells)
     return cells

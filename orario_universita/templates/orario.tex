@@ -1,4 +1,4 @@
-\documentclass[landscape,a4paper,12pt]{article}
+\documentclass[landscape,a3paper,12pt]{article}
 \usepackage[top=0mm, bottom=0mm, outer=0mm, inner=0mm]{geometry}
 
 \usepackage[utf8]{inputenc}
@@ -50,13 +50,23 @@
             ({{name}}) at (timetable-{{h}}-{{day}}.south |- timetable-{{h}}-1.south);
     {%endmacro %}
     {{ make_coord(key ~ " start top", cell.start_hour_idx, cell.day_idx) }}
+    {% if cell.start_minute != 0 %}
     {{ make_coord(key ~ " start bottom", cell.start_hour_idx+1, cell.day_idx) }}
     \coordinate
         ({{key}} start) at ($ ({{key}} start top)!{{cell.start_minute / 60}}!({{key}} start bottom) $);
+    {% else %}
+    \coordinate
+        ({{key}} start) at ({{key}} start top);
+    {% endif %}
     {{ make_coord(key ~ " end top", cell.end_hour_idx, cell.day_idx) }}
+    {% if cell.end_minute != 0 %}
     {{ make_coord(key ~ " end bottom", cell.end_hour_idx+1, cell.day_idx) }}
     \coordinate
         ({{key}} end) at ($ ({{key}} end top)!{{cell.end_minute / 60}}!({{key}} end bottom) $);
+    {% else %}
+    \coordinate
+        ({{key}} end) at ({{key}} end top);
+    {% endif %}
     \node[rounded corners=2mm, shading = axis, shading angle=135, left color=cellcolor, right color=cellcolor!80!black, minimum width={{cell_total_width}}, inner ysep=0cm,fit=({{key}} start)({{key}} end)] ({{key}}) {};
     \node[anchor=center, text=celltextcolor] at ({{key}}) {\parbox{ {{-cell_text_width-}} }{\centering\fontsize{ {{-name_fontsize-}} }{ {{-name_fontsize-}} }\selectfont {{cell.name}}}};
     \node[above, text=celltextcolor] at ({{key}}.south) {\parbox{ {{-cell_text_width-}} }{\centering\fontsize{ {{-room_fontsize-}} }{ {{-room_fontsize-}} }\selectfont {{cell.room}}}};

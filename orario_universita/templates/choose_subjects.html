@@ -138,10 +138,69 @@ function deleteSubject(target) {
     target.closest(".accordion-item").remove();
 }
 
+function hueToRgb(m1, m2, h) {
+  if (h < 0) h += 1;
+  if (h > 1) h -= 1;
+  if (h < 1 / 6) return m1 + (m2 - m1) * 6 * h;
+  if (h < 1 / 2) return m2;
+  if (h < 2 / 3) return m1 + (m2 - m1) * (2 / 3 - h) * 6;
+  return m1;
+}
+
+function hlsToRgb(h, l, s) {
+  let r, g, b;
+  if (s === 0) {
+    // achromatic: r = g = b = l
+    r = g = b = l;
+  } else {
+    let m2 = l <= 0.5 ? l * (1 + s) : l + s - l * s;
+    let m1 = 2 * l - m2;
+    r = hueToRgb(m1, m2, h + 1 / 3);
+    g = hueToRgb(m1, m2, h);
+    b = hueToRgb(m1, m2, h - 1 / 3);
+  }
+  return { r, g, b };
+}
+
+function randomHexColor() {
+  while (true) {
+    // Generate random H, S, L values:
+    // h is in [0, 1)
+    // s is in [0.5, 1)
+    // l is in [0.4, 0.6)
+    const h = Math.random();
+    const s = 0.5 + Math.random() / 2.0;
+    const l = 0.4 + Math.random() / 5.0;
+
+    // Convert HLS (note: order is h, l, s to match Python's colorsys)
+    const rgb = hlsToRgb(h, l, s);
+
+    // Multiply by 256 and convert to integer
+    const r = Math.floor(rgb.r * 256);
+    const g = Math.floor(rgb.g * 256);
+    const b = Math.floor(rgb.b * 256);
+
+    // Calculate YIQ brightness
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+
+    if (yiq < 128) {
+      // If the color is dark enough to ensure text is readable, format as hex and return.
+      const hex =
+        "#" +
+        r.toString(16).padStart(2, "0").toUpperCase() +
+        g.toString(16).padStart(2, "0").toUpperCase() +
+        b.toString(16).padStart(2, "0").toUpperCase();
+      return hex;
+    }
+    // Otherwise, continue looping.
+  }
+}
+
 {% set key_placeholder = "KEY_PLACEHOLDER" %}
 {% set name_placeholder = "NAME_PLACEHOLDER" %}
+{% set color_placeholder = "COLOR_PLACEHOLDER" %}
 const EMPTY_SUBJECT_HTML = `
-{{ accordion_item(key_placeholder, name_placeholder, key_placeholder, [], random_hex_color()) }}
+{{ accordion_item(key_placeholder, name_placeholder, key_placeholder, [], color_placeholder) }}
 `;
 
 document.getElementById('addSubject').addEventListener('click', (event) => {
@@ -149,7 +208,8 @@ document.getElementById('addSubject').addEventListener('click', (event) => {
   const newSubjectKey = crypto.randomUUID();
   document.getElementById('allSubjects').insertAdjacentHTML('beforeend', EMPTY_SUBJECT_HTML
     .replace(/{{key_placeholder}}/g, newSubjectKey)
-    .replace(/{{name_placeholder}}/g, document.getElementById('newSubjectName').value));
+    .replace(/{{name_placeholder}}/g, document.getElementById('newSubjectName').value)
+    .replace(/{{color_placeholder}}/g, randomHexColor()));
   const newSubject = document.getElementById(newSubjectKey);
   document.querySelectorAll('.form-control-color').forEach(updateYiq);
 });
