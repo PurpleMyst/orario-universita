@@ -6,14 +6,7 @@ import pandas as pd
 import pydantic
 from slugify import slugify
 
-from .configuration import (
-    CELL_TEXT_WIDTH,
-    CELL_TOTAL_WIDTH,
-    CELLS_METADATA_KEY,
-    COLUMNS,
-    DAYS,
-    HOURS,
-)
+from .configuration import CELLS_METADATA_KEY, COLUMNS, DAYS, HOURS
 from .utilities import random_hex_color
 
 COURSE_RE = re.compile(
@@ -81,14 +74,13 @@ class Cell(pydantic.BaseModel):
     name: str
     room: str
     color: str
-    text_color: str
-    day: int
-    start: int
-    end: int
-    total_width: str
-    text_width: str
-    half_start: bool
-    half_end: bool
+
+    day_idx: int
+
+    start_hour_idx: int
+    end_hour_idx: int
+    start_minute: int
+    end_minute: int
 
 
 def extract_subjects(year):
@@ -114,13 +106,6 @@ def extract_cells(pdf):
         return None
 
 
-def _handle_day(idx, half):
-    hour = HOURS[idx - 2]
-    if half:
-        hour = hour.replace(":00", ":30")
-    return hour
-
-
 def cells_to_subjects(cells):
     subjects = {}
     colors = {}
@@ -129,8 +114,8 @@ def cells_to_subjects(cells):
             {
                 "Day": DAYS[cell.day - 2],
                 "Name": cell.name,
-                "Start": _handle_day(cell.start, cell.half_start),
-                "End": _handle_day(cell.end, cell.half_end),
+                "Start": f"{HOURS[cell.start_hour_idx - 2]}:{cell.start_minute}",
+                "End": f"{HOURS[cell.end_hour_idx - 2]}:{cell.end_minute}",
                 "Room": cell.room,
             }
         )
@@ -157,14 +142,11 @@ def form_to_cells(form_data):
                 name=name.capitalize(),
                 room=f"{row['room'].replace(chr(10), ' ')}",
                 color=color.lstrip("#"),
-                text_color="FFFFFF",
-                day=2 + DAYS.index(row["day"]),
-                start=2 + HOURS.index(row["start"].replace(":30", ":00")),
-                end=2 + HOURS.index(row["end"].replace(":30", ":00")),
-                total_width=f"{CELL_TOTAL_WIDTH:.2}cm",
-                text_width=f"{CELL_TEXT_WIDTH:.2}cm",
-                half_start=row["start"].endswith(":30"),
-                half_end=row["end"].endswith(":30"),
+                day_idx=2 + DAYS.index(row["day"]),
+                start_hour_idx=2 + HOURS.index(row["start"].replace(":30", ":00")),
+                end_hour_idx=2 + HOURS.index(row["end"].replace(":30", ":00")),
+                start_minute=int(row["start"][3:]),
+                end_minute=int(row["end"][3:]),
             )
             for row in subject.values()
         )

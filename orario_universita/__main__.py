@@ -19,7 +19,15 @@ from .calendar_parsing import (
     load_calendar,
     years,
 )
-from .configuration import CELLS_METADATA_KEY, COL_SEP, HOURS, ROW_SEP, TO_HTML_KWARGS
+from .configuration import (
+    CELL_TEXT_WIDTH,
+    CELL_TOTAL_WIDTH,
+    CELLS_METADATA_KEY,
+    COL_SEP,
+    HOURS,
+    ROW_SEP,
+    TO_HTML_KWARGS,
+)
 from .utilities import iterator_index, parse_multi_form, random_hex_color
 
 app = Flask(__name__)
@@ -59,9 +67,13 @@ def do_render_timetable(tmpdir: str, cells: list[Cell], bg: str | None):
         times=HOURS,
         col_sep=COL_SEP,
         row_sep=ROW_SEP,
+        first_col_sep="-5mm",
         language="italian",
         name_fontsize=12,
         room_fontsize=8,
+        cell_text_color="FFFFFF",
+        cell_total_width=f"{CELL_TOTAL_WIDTH:.2}cm",
+        cell_text_width=f"{CELL_TEXT_WIDTH:.2}cm",
     )
 
     texfile = Path(tmpdir, "rendered_orario.tex")
