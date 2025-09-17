@@ -106,20 +106,22 @@ def extract_cells(pdf):
         return None
 
 
-def cells_to_subjects(cells):
+def cells_to_subjects(cells: list[Cell]):
     subjects = {}
     colors = {}
+    print(cells)
     for cell in cells:
         subjects.setdefault(cell.name, []).append(
             {
-                "Day": DAYS[cell.day - 2],
+                "Day": DAYS[cell.day_idx - 2],
                 "Name": cell.name,
-                "Start": f"{HOURS[cell.start_hour_idx - 2]}:{cell.start_minute}",
-                "End": f"{HOURS[cell.end_hour_idx - 2]}:{cell.end_minute}",
+                "Start": f"{HOURS[cell.start_hour_idx - 2].replace(':00', '')}:{cell.start_minute:02}",
+                "End": f"{HOURS[cell.end_hour_idx - 2].replace(':00', '')}:{cell.end_minute:02}",
                 "Room": cell.room,
             }
         )
         colors.setdefault(cell.name, f"#{cell.color}")
+    print(subjects)
 
     return [
         {
